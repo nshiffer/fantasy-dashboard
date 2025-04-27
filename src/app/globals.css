@@ -1,26 +1,127 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --foreground-rgb: 0, 0, 0;
+  --background-rgb: 245, 245, 245;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-rgb));
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Improved scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Modern focus styles */
+*:focus-visible {
+  outline: 2px solid rgb(14, 165, 233, 0.5);
+  outline-offset: 2px;
+}
+
+/* Card hover effects */
+.card-hover-effect {
+  transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+}
+
+.card-hover-effect:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Smooth transitions for interactive elements */
+button, a, input, select {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Custom utility classes */
+.text-shadow-sm {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.bg-gradient-primary {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%);
+}
+
+.border-gradient {
+  border-width: 2px;
+  border-style: solid;
+  border-image: linear-gradient(to right, #bae6fd, #0ea5e9) 1;
+}
+
+/* Animation for tabs and buttons */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Drag and drop styling */
+.draggable {
+  cursor: grab;
+}
+
+.draggable:active {
+  cursor: grabbing;
+}
+
+.drop-target {
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.drop-target.active {
+  border-color: #0ea5e9;
+  background-color: rgba(186, 230, 253, 0.2);
+}
+
+/* Tooltip styling */
+.tooltip {
+  position: relative;
+}
+
+.tooltip:before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  background-color: #1e293b;
+  color: white;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.tooltip:hover:before {
+  opacity: 1;
+  visibility: visible;
+  bottom: calc(100% + 5px);
 }
