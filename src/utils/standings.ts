@@ -8,10 +8,13 @@ export const calculateStandings = (rosters: Roster[], users: User[]): Standing[]
       throw new Error(`User not found for roster ${roster.roster_id}`);
     }
     
+    // Ensure we have a valid team name by using fallbacks
+    const teamName = user.metadata?.team_name || user.display_name || user.username || `Team ${roster.roster_id}`;
+    
     return {
       user_id: user.user_id,
       username: user.username,
-      team_name: user.metadata?.team_name || user.display_name,
+      team_name: teamName,
       avatar: user.avatar,
       wins: roster.settings.wins,
       losses: roster.settings.losses,
@@ -133,45 +136,80 @@ export const calculatePowerRankings = (
   // Clone the standings to avoid modifying the original
   const powerRankings = JSON.parse(JSON.stringify(standings)) as Standing[];
   
-  // Calculate power score based on:
-  // 1. Win percentage (50%)
-  // 2. Points for (30%)
-  // 3. Recent performance (last 3 weeks) (20%)
+  /**
+   * Power Rankings Algorithm
+   * 
+   * This algorithm calculates a power score for each team based on three key factors:
+   * 
+   * 1. Win Percentage (50% weight): Traditional win-loss record
+   *    - Win % is calculated as: wins / (wins + losses + ties)
+   *    - Higher win percentages indicate stronger teams
+   *    - This factor carries the most weight as winning games is still the primary goal
+   * 
+   * 2. Points For (30% weight): Season-long scoring performance
+   *    - Total points scored throughout the season
+   *    - Normalized against the highest-scoring team in the league
+   *    - Teams that consistently score high demonstrate strength even if they sometimes lose
+   * 
+   * 3. Recent Performance (20% weight): Last 3 weeks of play
+   *    - Measures how a team is performing lately (getting hot or cooling down)
+   *    - Calculated as average points over the last 3 weeks
+   *    - Normalized against the highest recent performer in the league
+   *    - Allows the rankings to capture teams that are improving or declining
+   * 
+   * The final power score is a weighted sum of these three factors, producing a score
+   * between 0 and 1, where 1 represents a theoretically perfect team.
+   */
+  
+  // Calculate power score based on these weighted components:
   powerRankings.forEach((team) => {
+    // Get weekly scores for this team
     const weeklyScores = calculateWeeklyScores(team.rank, matchups);
+    
+    // Only consider recent non-zero scores (last 3 weeks)
     const recentScores = weeklyScores.slice(-3).filter(score => score > 0);
     
-    const winPct = team.wins / (team.wins + team.losses + team.ties);
+    // 1. Win Percentage (50% weight)
+    // Higher win % = stronger team
+    const totalGames = team.wins + team.losses + team.ties;
+    const winPct = totalGames > 0 ? team.wins / totalGames : 0;
     
+    // 2. Points For (30% weight)
     // Find max points in the league for normalization
-    const maxPoints = Math.max(...powerRankings.map(t => t.points_for));
-    const normalizedPoints = team.points_for / maxPoints;
+    const maxPoints = Math.max(...powerRankings.map(t => t.points_for || 0));
+    // Normalize points to a 0-1 scale
+    const normalizedPoints = maxPoints > 0 ? (team.points_for || 0) / maxPoints : 0;
     
-    // Calculate recent performance score
+    // 3. Recent Performance (20% weight)
     let recentPerformance = 0;
     if (recentScores.length > 0) {
+      // Calculate average recent score
       const avgRecentScore = recentScores.reduce((sum, score) => sum + score, 0) / recentScores.length;
+      
+      // Find the highest average recent score in the league
       const maxAvgScore = Math.max(...powerRankings.map(t => {
         const tScores = calculateWeeklyScores(t.rank, matchups).slice(-3).filter(score => score > 0);
         return tScores.length > 0 
           ? tScores.reduce((sum, score) => sum + score, 0) / tScores.length 
           : 0;
       }));
-      recentPerformance = avgRecentScore / maxAvgScore;
+      
+      // Normalize recent performance to a 0-1 scale
+      recentPerformance = maxAvgScore > 0 ? avgRecentScore / maxAvgScore : 0;
     }
     
-    // Calculate power score (weighted components)
+    // Calculate final power score (weighted sum of all factors)
     const powerScore = (
-      (winPct * 0.5) + 
-      (normalizedPoints * 0.3) + 
-      (recentPerformance * 0.2)
+      (winPct * 0.5) +              // 50% weight for win percentage
+      (normalizedPoints * 0.3) +    // 30% weight for points scored
+      (recentPerformance * 0.2)     // 20% weight for recent performance
     );
     
     // Store power score for sorting
     (team as any).powerScore = powerScore;
   });
   
-  // Sort by power score
+  // Sort by power score (higher score = better ranking)
   return powerRankings
     .sort((a, b) => (b as any).powerScore - (a as any).powerScore)
     .map((standing, index) => ({ ...standing, rank: index + 1 }));

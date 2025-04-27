@@ -612,6 +612,37 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
     setIsDragging(false);
   };
 
+  // Handle dropping player for reranking in custom mode
+  const handleDragRankChange = (targetIndex: number) => {
+    if (!draggedPlayer || !customRankingsMode) return;
+    
+    // Find current index of the dragged player
+    const currentIndex = rookies.findIndex(p => p.player_id === draggedPlayer.player_id);
+    if (currentIndex === -1 || currentIndex === targetIndex) return;
+    
+    const newRookies = [...rookies];
+    
+    // Remove player from current position
+    const [movedPlayer] = newRookies.splice(currentIndex, 1);
+    // Insert at new position
+    newRookies.splice(targetIndex, 0, movedPlayer);
+    
+    // Update ranks
+    const updatedRookies = newRookies.map((player, idx) => ({
+      ...player,
+      rank: idx + 1
+    }));
+    
+    setRookies(updatedRookies);
+    
+    // Update saved rankings
+    const rankings: Record<string, number> = {};
+    updatedRookies.forEach((player, idx) => {
+      rankings[player.player_id] = idx + 1;
+    });
+    saveRankings(rankings);
+  };
+
   // Handle dropping player on a team
   const handleDrop = (teamIndex: number, pickData: DraftPickData) => {
     if (!draggedPlayer) return;
@@ -760,10 +791,10 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
   // Show loading state
   if (isLoading) {
     return (
-      <div className="draft-board bg-white rounded-xl shadow-lg p-6">
+      <div className="draft-board bg-white dark:bg-dark-800 rounded-xl shadow-lg p-6">
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
-          <span className="ml-3 text-gray-600">Loading draft data...</span>
+          <span className="ml-3 text-gray-600 dark:text-gray-400">Loading draft data...</span>
         </div>
       </div>
     );
@@ -771,30 +802,30 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
 
   // Render draft board
   return (
-    <div className="draft-board bg-white rounded-xl shadow-lg p-6">
+    <div className="draft-board bg-white dark:bg-dark-800 rounded-xl shadow-lg p-6">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-dark-900 mb-2">Rookie Draft Board</h2>
-        <p className="text-gray-600 mb-4">Create your custom draft board with KTC rankings integration</p>
+        <h2 className="text-2xl font-bold text-dark-900 dark:text-white mb-2">Rookie Draft Board</h2>
+        <p className="text-gray-600 dark:text-gray-400 mb-4">Create your custom draft board with KTC rankings integration</p>
         
         {/* Filters and controls */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div>
-            <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">Search Players</label>
+            <label htmlFor="search" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Search Players</label>
             <input
               type="text"
               id="search"
               placeholder="Search by name or team..."
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-dark-600 dark:bg-dark-700 dark:text-white rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
           
           <div>
-            <label htmlFor="position" className="block text-sm font-medium text-gray-700 mb-1">Position</label>
+            <label htmlFor="position" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Position</label>
             <select
               id="position"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-dark-600 dark:bg-dark-700 dark:text-white rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               value={positionFilter}
               onChange={(e) => setPositionFilter(e.target.value)}
             >
@@ -806,10 +837,10 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
           </div>
           
           <div>
-            <label htmlFor="sort" className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+            <label htmlFor="sort" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sort By</label>
             <select
               id="sort"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-dark-600 dark:bg-dark-700 dark:text-white rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as 'rank' | 'name' | 'position')}
             >
@@ -821,35 +852,32 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
           
           <div>
             <div className="flex justify-between">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Player Filters</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Player Filters</label>
             </div>
-            <div className="flex gap-2 mt-1">
-              <button
-                onClick={toggleCustomRankingsMode}
-                className={`flex-1 px-3 py-2 text-sm rounded-lg ${
-                  customRankingsMode
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {customRankingsMode ? 'Finish Ranking' : 'Custom Ranking'}
-              </button>
-              
-              <div className="flex-1 flex items-center gap-2 px-3 py-2 border rounded-lg bg-gray-50">
-                <label htmlFor="showVeterans" className="text-sm text-gray-600 cursor-pointer flex-1">
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center">
+                <input
+                  id="show-veterans"
+                  type="checkbox"
+                  className="h-4 w-4 text-primary-600 border-gray-300 dark:border-dark-600 rounded"
+                  checked={showVeterans}
+                  onChange={() => setShowVeterans(!showVeterans)}
+                />
+                <label htmlFor="show-veterans" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
                   Show Veterans
                 </label>
-                <div className="relative inline-block w-10 align-middle select-none">
-                  <input
-                    type="checkbox"
-                    id="showVeterans"
-                    checked={showVeterans}
-                    onChange={() => setShowVeterans(!showVeterans)}
-                    className="sr-only"
-                  />
-                  <div className={`block w-10 h-6 rounded-full transition-colors ${showVeterans ? 'bg-primary-600' : 'bg-gray-300'}`}></div>
-                  <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform transform ${showVeterans ? 'translate-x-4' : ''}`}></div>
-                </div>
+              </div>
+              <div className="flex items-center">
+                <input
+                  id="custom-ranking"
+                  type="checkbox"
+                  className="h-4 w-4 text-primary-600 border-gray-300 dark:border-dark-600 rounded"
+                  checked={customRankingsMode}
+                  onChange={() => setCustomRankingsMode(!customRankingsMode)}
+                />
+                <label htmlFor="custom-ranking" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                  Custom Ranking
+                </label>
               </div>
             </div>
           </div>
@@ -862,14 +890,14 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
             {/* Available players section */}
             <div className="col-span-1">
               <div className="flex justify-between items-center mb-3">
-                <h3 className="text-lg font-semibold text-dark-800">
+                <h3 className="text-lg font-semibold text-dark-800 dark:text-white">
                   Available Players ({filteredRookies.length})
                   {!showVeterans && <span className="ml-2 text-sm text-gray-500">Rookies Only</span>}
                 </h3>
               </div>
-              <div className="bg-gray-50 rounded-lg p-4 h-[600px] overflow-y-auto">
+              <div className="bg-gray-50 dark:bg-dark-700 rounded-lg p-4 h-[600px] overflow-y-auto">
                 {filteredRookies.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                     No players match your filters
                   </div>
                 ) : (
@@ -887,18 +915,40 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
                       return (
                         <div
                           key={player.player_id}
-                          className={`bg-white rounded-lg p-3 border ${player.ktcRank ? 'border-primary-200' : 'border-gray-200'} hover:border-primary-400 shadow-sm transition duration-200 flex items-center ${
-                            customRankingsMode ? 'cursor-default' : 'cursor-move draggable'
-                          } ${draftInfo ? 'opacity-75' : ''} ${isInCheatSheet ? 'border-amber-300' : ''}`}
-                          draggable={!customRankingsMode}
-                          onDragStart={() => !customRankingsMode && handleDragStart(player)}
+                          className={`bg-white dark:bg-dark-700 rounded-lg p-3 border ${
+                            player.ktcRank ? 'border-primary-200 dark:border-primary-800' : 'border-gray-200 dark:border-dark-600'
+                          } hover:border-primary-400 dark:hover:border-primary-600 shadow-sm transition duration-200 flex items-center cursor-move draggable ${
+                            draftInfo ? 'opacity-75' : ''
+                          } ${isInCheatSheet ? 'border-amber-300 dark:border-amber-700' : ''}`}
+                          draggable={true}
+                          onDragStart={() => handleDragStart(player)}
                           onDragEnd={handleDragEnd}
+                          onDragOver={(e) => {
+                            if (customRankingsMode) {
+                              e.preventDefault();
+                              e.currentTarget.classList.add('border-primary-500');
+                            }
+                          }}
+                          onDragLeave={(e) => {
+                            if (customRankingsMode) {
+                              e.currentTarget.classList.remove('border-primary-500');
+                            }
+                          }}
+                          onDrop={(e) => {
+                            if (customRankingsMode) {
+                              e.preventDefault();
+                              e.currentTarget.classList.remove('border-primary-500');
+                              handleDragRankChange(index);
+                            }
+                          }}
                         >
-                          <div className={`w-8 h-8 flex items-center justify-center ${player.ktcRank ? 'bg-primary-100 text-primary-800' : 'bg-gray-100 text-gray-800'} rounded-full font-semibold text-sm mr-3`}>
+                          <div className={`w-8 h-8 flex items-center justify-center ${
+                            player.ktcRank ? 'bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-100' : 'bg-gray-100 dark:bg-dark-600 text-gray-800 dark:text-gray-200'
+                          } rounded-full font-semibold text-sm mr-3`}>
                             {displayRank}
                           </div>
                           <div className="flex-1">
-                            <div className="font-semibold text-dark-900 flex items-center">
+                            <div className="font-semibold text-dark-900 dark:text-white flex items-center">
                               {player.first_name} {player.last_name}
                               {player.ktcRank && (
                                 <span className="ml-2 px-2 py-0.5 text-xs bg-primary-50 text-primary-700 rounded-full">
@@ -916,7 +966,7 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
                                 </span>
                               )}
                             </div>
-                            <div className="text-xs text-gray-500 flex items-center space-x-2">
+                            <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center space-x-2">
                               <span className={`px-2 py-0.5 rounded-full ${
                                 player.position === 'QB' ? 'bg-red-100 text-red-800' :
                                 player.position === 'RB' ? 'bg-blue-100 text-blue-800' :
@@ -933,7 +983,7 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
                             
                             {/* Show draft info if player has been drafted */}
                             {draftInfo && (
-                              <div className="mt-1 text-xs font-medium text-primary-600">
+                              <div className="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400">
                                 Drafted: Round {draftInfo.round}, Pick {draftInfo.pickNumber} ({draftInfo.teamName})
                               </div>
                             )}
@@ -969,7 +1019,7 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
                   </div>
                 )}
               </div>
-              <div className="mt-2 px-4 py-2 bg-gray-50 rounded-lg text-xs text-gray-500">
+              <div className="mt-2 px-4 py-2 bg-gray-50 dark:bg-dark-700 rounded-lg text-xs text-gray-500 dark:text-gray-400">
                 <p>Rankings sourced from <a href="https://keeptradecut.com/dynasty-rankings/rookie-rankings" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">KeepTradeCut</a></p>
               </div>
             </div>
@@ -992,11 +1042,11 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
                 ))}
               </div>
               
-              <div className="bg-gray-50 rounded-lg p-4 h-[600px] overflow-y-auto">
+              <div className="bg-gray-50 dark:bg-dark-700 rounded-lg p-4 h-[600px] overflow-y-auto">
                 {getRoundPicks(currentRound).length > 0 ? (
                   <table className="w-full">
                     <thead>
-                      <tr className="text-left text-sm text-gray-500 border-b border-gray-200">
+                      <tr className="text-left text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-dark-600">
                         <th className="pb-2 font-medium w-12">Pick</th>
                         <th className="pb-2 font-medium">Team</th>
                         <th className="pb-2 font-medium">Needs</th>
@@ -1014,8 +1064,8 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
                         const isTraded = pick.is_traded || pick.original_roster_id !== pick.roster_id;
                               
                         return (
-                          <tr key={`${team.user_id}-${pick.round}-${pick.pick_number}`} className="border-b border-gray-100">
-                            <td className="py-3 font-bold text-dark-900">{pick.pick_number}</td>
+                          <tr key={`${team.user_id}-${pick.round}-${pick.pick_number}`} className="border-b border-gray-100 dark:border-dark-600">
+                            <td className="py-3 font-bold text-dark-900 dark:text-white">{pick.pick_number}</td>
                             <td className="py-3">
                               <div className="flex items-center">
                                 {team.avatar && (
@@ -1028,9 +1078,9 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
                                   </div>
                                 )}
                                 <div>
-                                  <div className="font-medium text-dark-900">{team.team_name || team.username}</div>
+                                  <div className="font-medium text-dark-900 dark:text-white">{team.team_name || team.username}</div>
                                   {isTraded && originalOwnerTeam && (
-                                    <div className="text-xs text-gray-500">
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">
                                       From: {originalOwnerTeam.team_name || originalOwnerTeam.username}
                                     </div>
                                   )}
@@ -1080,7 +1130,7 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
                             </td>
                             <td className="py-3">
                               <div 
-                                className="h-16 w-full border-2 border-dashed border-gray-300 rounded-lg hover:border-primary-400 p-2 transition duration-200 drop-target"
+                                className="h-16 w-full border-2 border-dashed border-gray-300 dark:border-dark-600 rounded-lg hover:border-primary-400 dark:hover:border-primary-600 p-2 transition duration-200 drop-target"
                                 onDragOver={(e) => {
                                   e.preventDefault();
                                   e.currentTarget.classList.add('active');
@@ -1108,10 +1158,10 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
                                         'bg-gray-500'
                                       }`} />
                                       <div className="pl-2">
-                                        <div className="font-medium text-dark-900">
+                                        <div className="font-medium text-dark-900 dark:text-white">
                                           {players[pick.player_id]?.first_name} {players[pick.player_id]?.last_name}
                                         </div>
-                                        <div className="text-xs text-gray-500">
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">
                                           {players[pick.player_id]?.position} · {players[pick.player_id]?.team || 'FA'}
                                         </div>
                                       </div>
@@ -1143,7 +1193,7 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
                   </table>
                 ) : (
                   <div className="flex items-center justify-center h-64">
-                    <p className="text-gray-500">No picks available for this round</p>
+                    <p className="text-gray-500 dark:text-gray-400">No picks available for this round</p>
                   </div>
                 )}
               </div>
@@ -1153,30 +1203,30 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
           {/* Cheat Sheet - Now horizontal at the bottom */}
           <div>
             <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-semibold text-dark-800">
+              <h3 className="text-lg font-semibold text-dark-800 dark:text-white">
                 Draft Watchlist ({cheatSheet.length})
               </h3>
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-gray-500 dark:text-gray-400">
                 Drag players here to add to your watchlist
               </div>
             </div>
             <div 
-              className="bg-amber-50 border-2 border-dashed border-amber-200 rounded-lg p-4 min-h-[120px] overflow-x-auto"
+              className="bg-amber-50 dark:bg-amber-900/30 border-2 border-dashed border-amber-200 dark:border-amber-700 rounded-lg p-4 min-h-[120px] overflow-x-auto"
               onDragOver={(e) => {
                 e.preventDefault();
-                e.currentTarget.classList.add('border-amber-400');
+                e.currentTarget.classList.add('border-amber-400', 'dark:border-amber-500');
               }}
               onDragLeave={(e) => {
-                e.currentTarget.classList.remove('border-amber-400');
+                e.currentTarget.classList.remove('border-amber-400', 'dark:border-amber-500');
               }}
               onDrop={(e) => {
                 e.preventDefault();
-                e.currentTarget.classList.remove('border-amber-400');
+                e.currentTarget.classList.remove('border-amber-400', 'dark:border-amber-500');
                 handleDropInCheatSheet(e);
               }}
             >
               {cheatSheet.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-amber-700 text-center p-4">
+                <div className="flex items-center justify-center h-full text-amber-700 dark:text-amber-400 text-center p-4">
                   <div>
                     <div className="text-xl mb-2">Your draft watchlist is empty</div>
                     <div className="text-sm">Drag players here to keep track of prospects you're targeting in the draft</div>
@@ -1194,25 +1244,25 @@ const DraftBoard: React.FC<DraftBoardProps> = ({ players, rosters, users, league
                     return (
                       <div
                         key={playerId}
-                        className={`bg-white rounded-lg p-2 border border-amber-200 hover:border-amber-400 shadow-sm transition duration-200 flex items-center max-w-[220px] ${draftInfo ? 'opacity-75' : ''}`}
+                        className={`bg-white dark:bg-dark-700 rounded-lg p-2 border border-amber-200 dark:border-amber-700 hover:border-amber-400 dark:hover:border-amber-500 shadow-sm transition duration-200 flex items-center max-w-[220px] ${draftInfo ? 'opacity-75' : ''}`}
                       >
                         <div className={`w-6 h-6 flex items-center justify-center rounded-full mr-2 ${
-                          player.position === 'QB' ? 'bg-red-100 text-red-800' :
-                          player.position === 'RB' ? 'bg-blue-100 text-blue-800' :
-                          player.position === 'WR' ? 'bg-green-100 text-green-800' :
-                          player.position === 'TE' ? 'bg-purple-100 text-purple-800' :
-                          'bg-gray-100 text-gray-800'
+                          player.position === 'QB' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
+                          player.position === 'RB' ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' :
+                          player.position === 'WR' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+                          player.position === 'TE' ? 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200' :
+                          'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
                         } text-xs font-bold`}>
                           {player.position}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-dark-900 truncate">
+                          <div className="font-medium text-dark-900 dark:text-white truncate">
                             {player.first_name} {player.last_name}
                           </div>
-                          <div className="text-xs text-gray-500 flex items-center">
+                          <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
                             <span>{player.team || 'FA'}</span>
                             {draftInfo && (
-                              <span className="ml-1 text-primary-600">
+                              <span className="ml-1 text-primary-600 dark:text-primary-400">
                                 · R{draftInfo.round}.{draftInfo.pickNumber}
                               </span>
                             )}

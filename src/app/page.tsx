@@ -5,12 +5,15 @@ import { League, User, Roster, Standing, Matchup, Player } from '../types/sleepe
 import { fetchLeague, fetchRosters, fetchUsers, fetchMatchups, fetchAllPlayers } from '../services/sleeper-api';
 import { calculateStandings, calculateWeeklyScores } from '../utils/standings';
 import dynamic from 'next/dynamic';
-
 import Navigation from '../components/Navigation';
+import DashboardStats from '../components/ui/DashboardStats';
+import DashboardCard from '../components/ui/DashboardCard';
+import Loading from '../components/ui/Loading';
+
+// Remove Navigation import since it's now in the layout
 // Use dynamic imports for components with browser APIs like Chart.js
 const StandingsTable = dynamic(() => import('../components/StandingsTable'), { ssr: false });
 const TopScorers = dynamic(() => import('../components/TopScorers'), { ssr: false });
-const PowerRankings = dynamic(() => import('../components/PowerRankings'), { ssr: false });
 const RosterHeatmap = dynamic(() => import('../components/RosterHeatmap'), { ssr: false });
 const DraftBoard = dynamic(() => import('../components/DraftBoard'), { ssr: false });
 // This component doesn't use Chart.js, so we can import it normally
@@ -50,41 +53,72 @@ export default function Home() {
     setLeagueData(prev => ({ ...prev, loading: true, error: null }));
     
     try {
-      // For demo purposes, we'll mock the current week
-      const currentWeek = 9; // Adjust as needed
-      
       // Fetch league data
       const league = await fetchLeague(leagueId);
       const users = await fetchUsers(leagueId);
       const rosters = await fetchRosters(leagueId);
       
-      // Calculate standings
-      const standings = calculateStandings(rosters, users);
+      // Determine if it's offseason
+      const isOffseason = league.status === 'complete' || league.status === 'pre_draft';
       
-      // Fetch matchups for each week
-      const matchups: { [week: number]: Matchup[] } = {};
-      for (let week = 1; week <= currentWeek; week++) {
-        try {
-          matchups[week] = await fetchMatchups(leagueId, week);
-        } catch (error) {
-          console.error(`Failed to fetch matchups for week ${week}:`, error);
-          matchups[week] = [];
+      // Use 0 for offseason or a reasonable default like 9 for in-season
+      const currentWeek = isOffseason ? 0 : 9; // Adjust as needed or get from API
+      
+      let standings: Standing[];
+      let matchups: { [week: number]: Matchup[] } = {};
+      let weeklyScores: Record<string, number[]> = {};
+      
+      if (isOffseason) {
+        // Create placeholder standings for offseason with empty records
+        standings = users.map((user, index) => {
+          const roster = rosters.find(r => r.owner_id === user.user_id);
+          
+          return {
+            user_id: user.user_id,
+            username: user.display_name || user.username,
+            team_name: user.metadata?.team_name,
+            avatar: user.avatar,
+            wins: 0,
+            losses: 0,
+            ties: 0,
+            points_for: 0,
+            points_against: 0,
+            streak: 0,
+            rank: index + 1
+          };
+        });
+        
+        // Set empty weekly scores for everyone during offseason
+        users.forEach(user => {
+          weeklyScores[user.user_id] = [];
+        });
+      } else {
+        // For in-season, calculate standings from matchups
+        // Fetch matchups for each week
+        for (let week = 1; week <= currentWeek; week++) {
+          try {
+            matchups[week] = await fetchMatchups(leagueId, week);
+          } catch (error) {
+            console.error(`Failed to fetch matchups for week ${week}:`, error);
+            matchups[week] = [];
+          }
         }
+        
+        // Calculate real standings based on matchups
+        standings = calculateStandings(rosters, users);
+        
+        // Calculate weekly scores for each team
+        users.forEach(user => {
+          const roster = rosters.find(r => r.owner_id === user.user_id);
+          
+          if (roster) {
+            weeklyScores[user.user_id] = calculateWeeklyScores(roster.roster_id, matchups);
+          }
+        });
       }
       
       // Fetch player data (this is a large API call, may want to load from a file in production)
       const players = await fetchAllPlayers();
-      
-      // Calculate weekly scores for each team
-      const weeklyScores: Record<string, number[]> = {};
-      
-      users.forEach(user => {
-        const roster = rosters.find(r => r.owner_id === user.user_id);
-        
-        if (roster) {
-          weeklyScores[user.user_id] = calculateWeeklyScores(roster.roster_id, matchups);
-        }
-      });
       
       setLeagueData({
         league,
@@ -113,6 +147,35 @@ export default function Home() {
     
     if (leagueId) {
       fetchData(leagueId);
+    }
+  };
+
+  // Add logout handler
+  const handleLogout = () => {
+    // Clear the league ID from localStorage
+    localStorage.removeItem('fantasyLeagueId');
+    
+    // Reset the app state
+    setLeagueId('');
+    setLeagueData({
+      league: null,
+      users: [],
+      rosters: [],
+      standings: [],
+      matchups: {},
+      players: {},
+      currentWeek: 0,
+      weeklyScores: {},
+      loading: false,
+      error: null,
+    });
+    
+    // Reset active section to overview
+    setActiveSection('overview');
+    
+    // Clear hash from URL
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', window.location.pathname);
     }
   };
 
@@ -159,17 +222,17 @@ export default function Home() {
   // Show a loading state during server-side rendering
   if (!isMounted) {
     return (
-      <main className="min-h-screen bg-gray-50">
+      <main className="min-h-screen bg-gray-50 dark:bg-dark-900">
         <Navigation />
         <div className="container mx-auto px-4 py-8">
           <div className="flex items-center justify-center h-64">
             <div className="animate-pulse flex space-x-4">
-              <div className="rounded-full bg-gray-200 h-12 w-12"></div>
+              <div className="rounded-full bg-gray-200 dark:bg-dark-700 h-12 w-12"></div>
               <div className="flex-1 space-y-4 py-1">
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-4 bg-gray-200 dark:bg-dark-700 rounded w-3/4"></div>
                 <div className="space-y-2">
-                  <div className="h-4 bg-gray-200 rounded"></div>
-                  <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+                  <div className="h-4 bg-gray-200 dark:bg-dark-700 rounded"></div>
+                  <div className="h-4 bg-gray-200 dark:bg-dark-700 rounded w-5/6"></div>
                 </div>
               </div>
             </div>
@@ -179,329 +242,285 @@ export default function Home() {
     );
   }
 
+  const leagueInfo = leagueData.league ? {
+    name: leagueData.league.name,
+    avatar: leagueData.league.avatar,
+    season: leagueData.league.season,
+    teamCount: leagueData.league.total_rosters
+  } : undefined;
+
+  const renderOverviewSection = () => {
+    return (
+      <div className="space-y-8">
+        {/* Stats Cards */}
+        <DashboardStats 
+          league={leagueData.league}
+          standings={leagueData.standings}
+          currentWeek={leagueData.currentWeek}
+          totalTeams={leagueData.rosters.length}
+        />
+        
+        {/* Top Section - Matchups */}
+        <DashboardCard 
+          title={`Week ${leagueData.currentWeek} Matchups`} 
+          description="Latest matchups in your league"
+        >
+          <MatchupsList 
+            matchups={leagueData.matchups[leagueData.currentWeek] || []}
+            rosters={leagueData.rosters}
+            users={leagueData.users}
+            players={leagueData.players}
+            standings={leagueData.standings}
+            week={leagueData.currentWeek}
+          />
+        </DashboardCard>
+        
+        {/* Top Scorers Section */}
+        <DashboardCard 
+          title="Top Performers" 
+          description="Weekly and season leaders"
+        >
+          <TopScorers 
+            matchups={leagueData.matchups}
+            rosters={leagueData.rosters}
+            users={leagueData.users}
+            players={leagueData.players}
+            weeklyScores={leagueData.weeklyScores}
+            currentWeek={leagueData.currentWeek}
+          />
+        </DashboardCard>
+        
+        {/* Standings moved to bottom since most apps have built-in standings */}
+        <DashboardCard 
+          title="League Standings & Power Rankings" 
+          description="View traditional standings or our power rankings formula"
+          titleRight={
+            <span className="text-xs bg-gray-100 dark:bg-dark-700 text-gray-500 dark:text-gray-400 px-2 py-1 rounded-full">
+              Toggle between views
+            </span>
+          }
+        >
+          <StandingsTable 
+            standings={leagueData.standings} 
+            weeklyScores={leagueData.weeklyScores}
+            matchups={leagueData.matchups}
+            currentWeek={leagueData.currentWeek}
+          />
+        </DashboardCard>
+      </div>
+    );
+  };
+
+  // Determine which section to render
+  const renderActiveSection = () => {
+    switch (activeSection) {
+      case 'standings':
+        return (
+          <DashboardCard 
+            title="League Standings & Power Rankings" 
+            description="View traditional standings or our power rankings formula"
+            className="mb-6"
+            titleRight={
+              <span className="text-xs bg-gray-100 dark:bg-dark-700 text-gray-500 dark:text-gray-400 px-2 py-1 rounded-full">
+                Toggle between views
+              </span>
+            }
+          >
+            <StandingsTable 
+              standings={leagueData.standings} 
+              weeklyScores={leagueData.weeklyScores}
+              matchups={leagueData.matchups}
+              currentWeek={leagueData.currentWeek}
+            />
+          </DashboardCard>
+        );
+      case 'matchups':
+        return (
+          <DashboardCard 
+            title={`Week ${leagueData.currentWeek} Matchups`} 
+            description="Current matchups in your league"
+            className="mb-6"
+          >
+            <MatchupsList 
+              matchups={leagueData.matchups[leagueData.currentWeek] || []}
+              rosters={leagueData.rosters}
+              users={leagueData.users}
+              players={leagueData.players}
+              standings={leagueData.standings}
+              week={leagueData.currentWeek}
+            />
+          </DashboardCard>
+        );
+      case 'top-scorers':
+        return (
+          <DashboardCard 
+            title="Top Performers" 
+            description="Weekly and season leaders"
+            className="mb-6"
+          >
+            <TopScorers 
+              matchups={leagueData.matchups}
+              rosters={leagueData.rosters} 
+              users={leagueData.users} 
+              players={leagueData.players}
+              weeklyScores={leagueData.weeklyScores} 
+              currentWeek={leagueData.currentWeek}
+            />
+          </DashboardCard>
+        );
+      case 'power-rankings':
+        // Redirect to standings with power rankings view
+        if (typeof window !== 'undefined') {
+          window.location.hash = 'standings';
+        }
+        return (
+          <DashboardCard 
+            title="League Standings & Power Rankings" 
+            description="View traditional standings or our power rankings formula"
+            className="mb-6"
+            titleRight={
+              <span className="text-xs bg-gray-100 dark:bg-dark-700 text-gray-500 dark:text-gray-400 px-2 py-1 rounded-full">
+                Toggle between views
+              </span>
+            }
+          >
+            <StandingsTable 
+              standings={leagueData.standings} 
+              weeklyScores={leagueData.weeklyScores}
+              matchups={leagueData.matchups}
+              currentWeek={leagueData.currentWeek}
+            />
+          </DashboardCard>
+        );
+      case 'roster-analysis':
+        return (
+          <DashboardCard 
+            title="Roster Analysis" 
+            description="Analyze roster strengths and weaknesses"
+            className="mb-6"
+          >
+            <RosterHeatmap 
+              matchups={leagueData.matchups}
+              rosters={leagueData.rosters} 
+              users={leagueData.users} 
+              players={leagueData.players}
+              currentWeek={leagueData.currentWeek}
+            />
+          </DashboardCard>
+        );
+      case 'draft-board':
+        return (
+          <div className="mb-6">
+            {leagueData.league && (
+              <DraftBoard 
+                league={leagueData.league}
+                rosters={leagueData.rosters}
+                users={leagueData.users}
+                players={leagueData.players}
+              />
+            )}
+          </div>
+        );
+      case 'overview':
+      default:
+        return renderOverviewSection();
+    }
+  };
+
   return (
-    <main className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
-      <Navigation />
+    <main className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-dark-900 dark:to-dark-800">
+      <Navigation 
+        leagueInfo={leagueInfo}
+        currentSection={activeSection}
+        onSectionChange={setActiveSection}
+        onLogout={handleLogout}
+      />
       
       <div className="container mx-auto px-4 py-8">
-        {!leagueData.league && (
-          <div className="max-w-md mx-auto">
-            <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 transform transition duration-300 hover:shadow-2xl">
-              <div className="text-center mb-6">
-                <div className="mx-auto h-20 w-20 text-primary-600 bg-primary-50 rounded-full flex items-center justify-center">
-                  <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                  </svg>
-                </div>
-                <h2 className="mt-4 text-2xl font-bold text-dark-900">Enter Your Sleeper League ID</h2>
-                <p className="mt-1 text-gray-500">Connect to your fantasy football league</p>
-              </div>
-              
+        {/* Login form if no league is loaded */}
+        {!leagueData.league && !leagueData.loading && (
+          <div className="max-w-lg mx-auto mt-12">
+            <DashboardCard 
+              title="Welcome to Fantasy Dashboard" 
+              description="Connect your Sleeper fantasy football league to get started."
+            >
               <form onSubmit={handleLeagueIdSubmit} className="space-y-6">
-                <div className="space-y-2">
-                  <label htmlFor="league-id" className="block text-sm font-medium text-dark-700">
-                    League ID
+                <div>
+                  <label htmlFor="leagueId" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Sleeper League ID
                   </label>
-                  <div className="relative rounded-md shadow-sm">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
-                      </svg>
-                    </div>
+                  <div className="mt-1 relative rounded-md shadow-sm">
                     <input
                       type="text"
-                      id="league-id"
-                      className="pl-10 w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
-                      placeholder="e.g. 123456789"
+                      name="leagueId"
+                      id="leagueId"
                       value={leagueId}
                       onChange={(e) => setLeagueId(e.target.value)}
+                      placeholder="Enter your Sleeper league ID"
+                      className="block w-full py-3 px-4 border-gray-300 dark:border-gray-600 bg-white dark:bg-dark-700 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 text-gray-900 dark:text-white sm:text-sm"
                       required
-                      suppressHydrationWarning
                     />
                   </div>
-                  <p className="text-sm text-gray-500">
-                    Find your league ID in the URL when you visit your Sleeper league:
-                    https://sleeper.app/leagues/<strong className="text-primary-600">YOUR_LEAGUE_ID</strong>
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    You can find your league ID in the URL of your Sleeper league.
                   </p>
-                </div>
-                
-                <button
-                  type="submit"
-                  className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
-                  disabled={leagueData.loading}
-                >
-                  {leagueData.loading ? (
-                    <div className="flex items-center">
-                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Loading...
-                    </div>
-                  ) : (
-                    'Connect to League'
-                  )}
-                </button>
-              </form>
-              
-              {leagueData.error && (
-                <div className="mt-4 p-4 rounded-lg bg-red-50 border border-red-100">
-                  <div className="flex">
-                    <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                    <p className="ml-3 text-sm text-red-800">
+                  {leagueData.error && (
+                    <p className="mt-2 text-sm text-red-600 dark:text-red-400">
                       {leagueData.error}
                     </p>
-                  </div>
+                  )}
                 </div>
-              )}
+                <div>
+                  <button
+                    type="submit"
+                    className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 dark:bg-primary-700 dark:hover:bg-primary-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors duration-200"
+                  >
+                    <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M21 12L13 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M18 15L21 12L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M13 7V6C13 4.89543 12.1046 4 11 4H6C4.89543 4 4 4.89543 4 6V18C4 19.1046 4.89543 20 6 20H11C12.1046 20 13 19.1046 13 18V17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Connect League
+                  </button>
+                </div>
+              </form>
+              
+              <div className="mt-6 border-t border-gray-200 dark:border-dark-700 pt-4">
+                <h3 className="text-sm font-medium text-gray-900 dark:text-white">Not sure where to find your league ID?</h3>
+                <ol className="mt-2 text-sm text-gray-500 dark:text-gray-400 list-decimal list-inside space-y-1">
+                  <li>Log in to your Sleeper account</li>
+                  <li>Navigate to your fantasy football league</li>
+                  <li>Look at the URL: sleeper.app/leagues/<strong className="text-primary-600 dark:text-primary-400">YOUR_LEAGUE_ID</strong></li>
+                  <li>Copy and paste the league ID into the field above</li>
+                </ol>
+              </div>
+            </DashboardCard>
+            
+            <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
+              <p>
+                Fantasy Dashboard provides helpful insights and visualizations for your Sleeper fantasy football league.
+              </p>
             </div>
           </div>
         )}
         
+        {leagueData.loading && (
+          <div className="py-12">
+            <Loading text="Fetching league data..." />
+          </div>
+        )}
+        
         {leagueData.league && (
-          <>
-            {/* League Header Card */}
-            <div className="bg-white shadow-md rounded-xl p-6 mb-8">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center">
-                  {leagueData.league.avatar && (
-                    <img 
-                      src={`https://sleepercdn.com/avatars/${leagueData.league.avatar}`} 
-                      alt="League avatar" 
-                      className="h-16 w-16 rounded-full border-4 border-primary-100 mr-4" 
-                    />
-                  )}
-                  <div>
-                    <h1 className="text-2xl font-bold text-dark-900">
-                      {leagueData.league.name}
-                    </h1>
-                    <p className="text-gray-500">
-                      {leagueData.league.season} Season • {leagueData.users.length} Teams
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex flex-wrap gap-2">
-                  <button 
-                    onClick={() => setActiveSection('overview')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeSection === 'overview' 
-                        ? 'bg-primary-600 text-white' 
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Overview
-                  </button>
-                  <button 
-                    onClick={() => { 
-                      setActiveSection('standings');
-                      window.location.hash = 'standings';
-                    }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeSection === 'standings' 
-                        ? 'bg-primary-600 text-white' 
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Standings
-                  </button>
-                  <button 
-                    onClick={() => { 
-                      setActiveSection('matchups');
-                      window.location.hash = 'matchups';
-                    }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeSection === 'matchups' 
-                        ? 'bg-primary-600 text-white' 
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Matchups
-                  </button>
-                  <button 
-                    onClick={() => { 
-                      setActiveSection('top-scorers');
-                      window.location.hash = 'top-scorers';
-                    }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeSection === 'top-scorers' 
-                        ? 'bg-primary-600 text-white' 
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Top Scorers
-                  </button>
-                  <button 
-                    onClick={() => { 
-                      setActiveSection('power-rankings');
-                      window.location.hash = 'power-rankings';
-                    }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeSection === 'power-rankings' 
-                        ? 'bg-primary-600 text-white' 
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Power Rankings
-                  </button>
-                  <button 
-                    onClick={() => { 
-                      setActiveSection('roster-analysis');
-                      window.location.hash = 'roster-analysis';
-                    }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeSection === 'roster-analysis' 
-                        ? 'bg-primary-600 text-white' 
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Roster Analysis
-                  </button>
-                  <button 
-                    onClick={() => { 
-                      setActiveSection('draft-board');
-                      window.location.hash = 'draft-board';
-                    }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeSection === 'draft-board' 
-                        ? 'bg-primary-600 text-white' 
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Draft Board
-                  </button>
-                </div>
-              </div>
-            </div>
-            
-            {/* Content Sections */}
-            <div className="space-y-8">
-              {activeSection === 'overview' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                  <div id="standings">
-                    <div className="bg-white rounded-xl shadow-md overflow-hidden">
-                      <div className="p-4 border-b border-gray-100">
-                        <h2 className="text-xl font-semibold text-dark-900">Standings</h2>
-                      </div>
-                      <div className="p-4">
-                        <StandingsTable 
-                          standings={leagueData.standings} 
-                          weeklyScores={leagueData.weeklyScores}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div id="matchups">
-                    <div className="bg-white rounded-xl shadow-md overflow-hidden">
-                      <div className="p-4 border-b border-gray-100">
-                        <h2 className="text-xl font-semibold text-dark-900">Week {leagueData.currentWeek} Matchups</h2>
-                      </div>
-                      <div className="p-4">
-                        <MatchupsList 
-                          matchups={leagueData.matchups[leagueData.currentWeek] || []} 
-                          rosters={leagueData.rosters} 
-                          users={leagueData.users} 
-                          players={leagueData.players}
-                          standings={leagueData.standings}
-                          week={leagueData.currentWeek}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {activeSection === 'standings' && (
-                <div id="standings" className="bg-white rounded-xl shadow-md overflow-hidden">
-                  <div className="p-6 border-b border-gray-100">
-                    <h2 className="text-2xl font-bold text-dark-900">League Standings</h2>
-                    <p className="text-gray-500">Current standings for the {leagueData.league.season} season</p>
-                  </div>
-                  <div className="p-6">
-                    <StandingsTable 
-                      standings={leagueData.standings} 
-                      weeklyScores={leagueData.weeklyScores}
-                    />
-                  </div>
-                </div>
-              )}
-              
-              {activeSection === 'matchups' && (
-                <div id="matchups" className="bg-white rounded-xl shadow-md overflow-hidden">
-                  <div className="p-6 border-b border-gray-100">
-                    <h2 className="text-2xl font-bold text-dark-900">Week {leagueData.currentWeek} Matchups</h2>
-                    <p className="text-gray-500">Current matchups for week {leagueData.currentWeek}</p>
-                  </div>
-                  <div className="p-6">
-                    <MatchupsList 
-                      matchups={leagueData.matchups[leagueData.currentWeek] || []} 
-                      rosters={leagueData.rosters} 
-                      users={leagueData.users} 
-                      players={leagueData.players}
-                      standings={leagueData.standings}
-                      week={leagueData.currentWeek}
-                    />
-                  </div>
-                </div>
-              )}
-              
-              {activeSection === 'top-scorers' && (
-                <div id="top-scorers">
-                  <TopScorers 
-                    matchups={leagueData.matchups}
-                    rosters={leagueData.rosters} 
-                    users={leagueData.users} 
-                    players={leagueData.players}
-                    weeklyScores={leagueData.weeklyScores} 
-                    currentWeek={leagueData.currentWeek}
-                  />
-                </div>
-              )}
-              
-              {activeSection === 'power-rankings' && (
-                <div id="power-rankings">
-                  <PowerRankings 
-                    standings={leagueData.standings}
-                    matchups={leagueData.matchups}
-                    currentWeek={leagueData.currentWeek}
-                  />
-                </div>
-              )}
-              
-              {activeSection === 'roster-analysis' && (
-                <div id="roster-analysis">
-                  <RosterHeatmap 
-                    rosters={leagueData.rosters} 
-                    users={leagueData.users} 
-                    players={leagueData.players}
-                    matchups={leagueData.matchups}
-                    currentWeek={leagueData.currentWeek}
-                  />
-                </div>
-              )}
-
-              {activeSection === 'draft-board' && (
-                <div id="draft-board">
-                  <DraftBoard
-                    players={leagueData.players}
-                    rosters={leagueData.rosters}
-                    users={leagueData.users}
-                    league={leagueData.league}
-                  />
-                </div>
-              )}
-            </div>
-          </>
+          <div className="space-y-8">
+            {renderActiveSection()}
+          </div>
         )}
       </div>
       
       {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 py-6 mt-12">
+      <footer className="bg-white dark:bg-dark-800 border-t border-gray-200 dark:border-dark-700 py-6 mt-12">
         <div className="container mx-auto px-4">
-          <div className="text-center text-gray-500 text-sm">
+          <div className="text-center text-gray-500 dark:text-gray-400 text-sm">
             <p>Fantasy Dashboard © {new Date().getFullYear()}</p>
             <p className="mt-1">Data provided by Sleeper API</p>
           </div>

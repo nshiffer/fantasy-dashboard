@@ -82,18 +82,18 @@ const TopScorers: React.FC<TopScorersProps> = ({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+      <div className="bg-white dark:bg-dark-800 shadow overflow-hidden sm:rounded-lg">
         <div className="px-4 py-5 sm:px-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">Week {currentWeek} Top Scorers</h3>
-          <p className="mt-1 max-w-2xl text-sm text-gray-500">Highest scoring teams this week</p>
+          <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">Week {currentWeek} Top Scorers</h3>
+          <p className="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">Highest scoring teams this week</p>
         </div>
-        <div className="border-t border-gray-200">
-          <ul className="divide-y divide-gray-200">
+        <div className="border-t border-gray-200 dark:border-dark-700">
+          <ul className="divide-y divide-gray-200 dark:divide-dark-700">
             {weekTopScorers.map((scorer, index) => (
               <li key={scorer.roster_id} className="px-4 py-4 sm:px-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
-                    <span className="flex-shrink-0 h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-lg font-bold">
+                    <span className="flex-shrink-0 h-10 w-10 rounded-full bg-gray-200 dark:bg-dark-700 flex items-center justify-center text-lg font-bold text-gray-900 dark:text-white">
                       {index + 1}
                     </span>
                     <div className="ml-4 flex items-center">
@@ -104,15 +104,15 @@ const TopScorers: React.FC<TopScorersProps> = ({
                           className="h-8 w-8 rounded-full mr-2" 
                         />
                       )}
-                      <span className="font-medium text-gray-900">{scorer.team_name}</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{scorer.team_name}</span>
                       {scorer.onHotStreak && (
-                        <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-md text-sm font-medium bg-red-100 text-red-800">
+                        <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-md text-sm font-medium bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200">
                           🔥 Hot Streak
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="text-lg font-bold text-gray-900">
+                  <div className="text-lg font-bold text-gray-900 dark:text-white">
                     {scorer.points != null ? scorer.points.toFixed(2) : '-'} pts
                   </div>
                 </div>
@@ -122,18 +122,18 @@ const TopScorers: React.FC<TopScorersProps> = ({
         </div>
       </div>
       
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+      <div className="bg-white dark:bg-dark-800 shadow overflow-hidden sm:rounded-lg">
         <div className="px-4 py-5 sm:px-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">Season Top Scorers</h3>
-          <p className="mt-1 max-w-2xl text-sm text-gray-500">Highest scoring teams this season</p>
+          <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">Season Top Scorers</h3>
+          <p className="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">Highest scoring teams this season</p>
         </div>
-        <div className="border-t border-gray-200">
-          <ul className="divide-y divide-gray-200">
+        <div className="border-t border-gray-200 dark:border-dark-700">
+          <ul className="divide-y divide-gray-200 dark:divide-dark-700">
             {seasonTopScorers.map((scorer, index) => (
               <li key={scorer.roster_id} className="px-4 py-4 sm:px-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
-                    <span className="flex-shrink-0 h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-lg font-bold">
+                    <span className="flex-shrink-0 h-10 w-10 rounded-full bg-gray-200 dark:bg-dark-700 flex items-center justify-center text-lg font-bold text-gray-900 dark:text-white">
                       {index + 1}
                     </span>
                     <div className="ml-4 flex items-center">
@@ -144,15 +144,15 @@ const TopScorers: React.FC<TopScorersProps> = ({
                           className="h-8 w-8 rounded-full mr-2" 
                         />
                       )}
-                      <span className="font-medium text-gray-900">{scorer.team_name}</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{scorer.team_name}</span>
                       {scorer.onHotStreak && (
-                        <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-md text-sm font-medium bg-red-100 text-red-800">
+                        <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-md text-sm font-medium bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200">
                           🔥 Hot Streak
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="text-lg font-bold text-gray-900">
+                  <div className="text-lg font-bold text-gray-900 dark:text-white">
                     {scorer.points != null ? scorer.points.toFixed(2) : '-'} pts
                   </div>
                 </div>
