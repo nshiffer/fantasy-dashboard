@@ -7,8 +7,8 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
-  basePath: process.env.NODE_ENV === 'production' ? '/fantasy-dashboard' : '',
-  assetPrefix: process.env.NODE_ENV === 'production' ? '/fantasy-dashboard/' : '',
+  basePath: '',
+  assetPrefix: '',
   reactStrictMode: true,
   trailingSlash: true,
 }
