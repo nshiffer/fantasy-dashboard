@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { League, User, Roster, Standing, Matchup, Player } from '../types/sleeper';
-import { fetchLeague, fetchRosters, fetchUsers, fetchMatchups, fetchAllPlayers } from '../services/sleeper-api';
+import { fetchAllPlayers, fetchLeague, fetchMatchups, fetchNflState, fetchRosters, fetchUsers } from '../services/sleeper-api';
 import { calculateStandings, calculateWeeklyScores } from '../utils/standings';
 import dynamic from 'next/dynamic';
 import Navigation from '../components/Navigation';
@@ -23,6 +23,7 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [leagueId, setLeagueId] = useState<string>('');
   const [activeSection, setActiveSection] = useState<string>('overview');
+  const [playerDataStatus, setPlayerDataStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const [leagueData, setLeagueData] = useState<{
     league: League | null;
     users: User[];
@@ -47,33 +48,36 @@ export default function Home() {
     error: null,
   });
 
-  const fetchData = async (leagueId: string) => {
-    if (!leagueId) return;
-    
-    setLeagueData(prev => ({ ...prev, loading: true, error: null }));
-    
+  const fetchData = async (submittedLeagueId: string) => {
+    if (!submittedLeagueId) return;
+
+    setLeagueData((previous) => ({ ...previous, loading: true, error: null, players: {} }));
+    setPlayerDataStatus('idle');
+
     try {
-      // Fetch league data
-      const league = await fetchLeague(leagueId);
-      const users = await fetchUsers(leagueId);
-      const rosters = await fetchRosters(leagueId);
-      
-      // Determine if it's offseason
+      const [league, users, rosters, nflState] = await Promise.all([
+        fetchLeague(submittedLeagueId),
+        fetchUsers(submittedLeagueId),
+        fetchRosters(submittedLeagueId),
+        fetchNflState(),
+      ]);
       const isOffseason = league.status === 'complete' || league.status === 'pre_draft';
-      
-      // Use 0 for offseason or a reasonable default like 9 for in-season
-      const currentWeek = isOffseason ? 0 : 9; // Adjust as needed or get from API
-      
-      let standings: Standing[];
-      let matchups: { [week: number]: Matchup[] } = {};
-      let weeklyScores: Record<string, number[]> = {};
-      
-      if (isOffseason) {
-        // Create placeholder standings for offseason with empty records
-        standings = users.map((user, index) => {
-          const roster = rosters.find(r => r.owner_id === user.user_id);
-          
-          return {
+      const currentWeek = isOffseason ? 0 : Math.max(1, nflState.week || 1);
+      const matchupEntries = isOffseason
+        ? []
+        : await Promise.all(
+            Array.from({ length: currentWeek }, (_, index) => index + 1).map(async (week) => {
+              try {
+                return [week, await fetchMatchups(submittedLeagueId, week)] as const;
+              } catch (error) {
+                console.error(`Failed to fetch matchups for week ${week}:`, error);
+                return [week, []] as const;
+              }
+            })
+          );
+      const matchups = Object.fromEntries(matchupEntries) as Record<number, Matchup[]>;
+      const standings = isOffseason
+        ? users.map((user, index) => ({
             user_id: user.user_id,
             username: user.display_name || user.username,
             team_name: user.metadata?.team_name,
@@ -84,49 +88,25 @@ export default function Home() {
             points_for: 0,
             points_against: 0,
             streak: 0,
-            rank: index + 1
-          };
-        });
-        
-        // Set empty weekly scores for everyone during offseason
-        users.forEach(user => {
-          weeklyScores[user.user_id] = [];
-        });
-      } else {
-        // For in-season, calculate standings from matchups
-        // Fetch matchups for each week
-        for (let week = 1; week <= currentWeek; week++) {
-          try {
-            matchups[week] = await fetchMatchups(leagueId, week);
-          } catch (error) {
-            console.error(`Failed to fetch matchups for week ${week}:`, error);
-            matchups[week] = [];
-          }
-        }
-        
-        // Calculate real standings based on matchups
-        standings = calculateStandings(rosters, users);
-        
-        // Calculate weekly scores for each team
-        users.forEach(user => {
-          const roster = rosters.find(r => r.owner_id === user.user_id);
-          
-          if (roster) {
-            weeklyScores[user.user_id] = calculateWeeklyScores(roster.roster_id, matchups);
-          }
-        });
-      }
-      
-      // Fetch player data (this is a large API call, may want to load from a file in production)
-      const players = await fetchAllPlayers();
-      
+            rank: index + 1,
+          }))
+        : calculateStandings(rosters, users);
+      const weeklyScores: Record<string, number[]> = {};
+
+      users.forEach((user) => {
+        const roster = rosters.find((candidate) => candidate.owner_id === user.user_id);
+        weeklyScores[user.user_id] = roster && !isOffseason
+          ? calculateWeeklyScores(roster.roster_id, matchups)
+          : [];
+      });
+
       setLeagueData({
         league,
         users,
         rosters,
         standings,
         matchups,
-        players,
+        players: {},
         currentWeek,
         weeklyScores,
         loading: false,
@@ -134,19 +114,49 @@ export default function Home() {
       });
     } catch (error) {
       console.error('Failed to fetch data:', error);
-      setLeagueData(prev => ({
-        ...prev,
+      setLeagueData((previous) => ({
+        ...previous,
         loading: false,
-        error: 'Failed to fetch league data. Please check the league ID and try again.',
+        error: 'Failed to fetch league data. Check the league ID and try again.',
       }));
     }
   };
 
+  const loadPlayers = useCallback(async () => {
+    if (playerDataStatus !== 'idle' || Object.keys(leagueData.players).length > 0) return;
+
+    setPlayerDataStatus('loading');
+    try {
+      const players = await fetchAllPlayers();
+      setLeagueData((previous) => ({ ...previous, players }));
+      setPlayerDataStatus('loaded');
+    } catch (error) {
+      console.error('Failed to fetch player data:', error);
+      setPlayerDataStatus('error');
+    }
+  }, [leagueData.players, playerDataStatus]);
+
+  useEffect(() => {
+    if (leagueData.league && (activeSection === 'roster-analysis' || activeSection === 'draft-board')) {
+      void loadPlayers();
+    }
+  }, [activeSection, leagueData.league, loadPlayers]);
+
+  const renderPlayerData = (content: React.ReactNode) => {
+    if (playerDataStatus === 'loading') return <Loading text="Loading player data..." />;
+    if (playerDataStatus === 'error') {
+      return <p className="text-red-600 dark:text-red-400">Player data could not be loaded. Please try again.</p>;
+    }
+    return content;
+  };
+
   const handleLeagueIdSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (leagueId) {
-      fetchData(leagueId);
+
+    const normalizedLeagueId = leagueId.trim();
+    if (normalizedLeagueId) {
+      setLeagueId(normalizedLeagueId);
+      void fetchData(normalizedLeagueId);
     }
   };
 
@@ -154,7 +164,7 @@ export default function Home() {
   const handleLogout = () => {
     // Clear the league ID from localStorage
     localStorage.removeItem('fantasyLeagueId');
-    
+
     // Reset the app state
     setLeagueId('');
     setLeagueData({
@@ -169,10 +179,10 @@ export default function Home() {
       loading: false,
       error: null,
     });
-    
+
     // Reset active section to overview
     setActiveSection('overview');
-    
+
     // Clear hash from URL
     if (typeof window !== 'undefined') {
       window.history.pushState({}, '', window.location.pathname);
@@ -187,9 +197,9 @@ export default function Home() {
   // Only run localStorage effects when component is mounted
   useEffect(() => {
     if (!isMounted) return;
-    
+
     const savedLeagueId = localStorage.getItem('fantasyLeagueId');
-    
+
     if (savedLeagueId) {
       setLeagueId(savedLeagueId);
       fetchData(savedLeagueId);
@@ -219,29 +229,6 @@ export default function Home() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Show a loading state during server-side rendering
-  if (!isMounted) {
-    return (
-      <main className="min-h-screen bg-gray-50 dark:bg-dark-900">
-        <Navigation />
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-pulse flex space-x-4">
-              <div className="rounded-full bg-gray-200 dark:bg-dark-700 h-12 w-12"></div>
-              <div className="flex-1 space-y-4 py-1">
-                <div className="h-4 bg-gray-200 dark:bg-dark-700 rounded w-3/4"></div>
-                <div className="space-y-2">
-                  <div className="h-4 bg-gray-200 dark:bg-dark-700 rounded"></div>
-                  <div className="h-4 bg-gray-200 dark:bg-dark-700 rounded w-5/6"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
   const leagueInfo = leagueData.league ? {
     name: leagueData.league.name,
     avatar: leagueData.league.avatar,
@@ -253,19 +240,19 @@ export default function Home() {
     return (
       <div className="space-y-8">
         {/* Stats Cards */}
-        <DashboardStats 
+        <DashboardStats
           league={leagueData.league}
           standings={leagueData.standings}
           currentWeek={leagueData.currentWeek}
           totalTeams={leagueData.rosters.length}
         />
-        
+
         {/* Top Section - Matchups */}
-        <DashboardCard 
-          title={`Week ${leagueData.currentWeek} Matchups`} 
+        <DashboardCard
+          title={`Week ${leagueData.currentWeek} Matchups`}
           description="Latest matchups in your league"
         >
-          <MatchupsList 
+          <MatchupsList
             matchups={leagueData.matchups[leagueData.currentWeek] || []}
             rosters={leagueData.rosters}
             users={leagueData.users}
@@ -274,13 +261,13 @@ export default function Home() {
             week={leagueData.currentWeek}
           />
         </DashboardCard>
-        
+
         {/* Top Scorers Section */}
-        <DashboardCard 
-          title="Top Performers" 
+        <DashboardCard
+          title="Top Performers"
           description="Weekly and season leaders"
         >
-          <TopScorers 
+          <TopScorers
             matchups={leagueData.matchups}
             rosters={leagueData.rosters}
             users={leagueData.users}
@@ -289,10 +276,10 @@ export default function Home() {
             currentWeek={leagueData.currentWeek}
           />
         </DashboardCard>
-        
+
         {/* Standings moved to bottom since most apps have built-in standings */}
-        <DashboardCard 
-          title="League Standings & Power Rankings" 
+        <DashboardCard
+          title="League Standings & Power Rankings"
           description="View traditional standings or our power rankings formula"
           titleRight={
             <span className="text-xs bg-gray-100 dark:bg-dark-700 text-gray-500 dark:text-gray-400 px-2 py-1 rounded-full">
@@ -300,8 +287,8 @@ export default function Home() {
             </span>
           }
         >
-          <StandingsTable 
-            standings={leagueData.standings} 
+          <StandingsTable
+            standings={leagueData.standings}
             weeklyScores={leagueData.weeklyScores}
             matchups={leagueData.matchups}
             currentWeek={leagueData.currentWeek}
@@ -316,8 +303,8 @@ export default function Home() {
     switch (activeSection) {
       case 'standings':
         return (
-          <DashboardCard 
-            title="League Standings & Power Rankings" 
+          <DashboardCard
+            title="League Standings & Power Rankings"
             description="View traditional standings or our power rankings formula"
             className="mb-6"
             titleRight={
@@ -326,8 +313,8 @@ export default function Home() {
               </span>
             }
           >
-            <StandingsTable 
-              standings={leagueData.standings} 
+            <StandingsTable
+              standings={leagueData.standings}
               weeklyScores={leagueData.weeklyScores}
               matchups={leagueData.matchups}
               currentWeek={leagueData.currentWeek}
@@ -336,12 +323,12 @@ export default function Home() {
         );
       case 'matchups':
         return (
-          <DashboardCard 
-            title={`Week ${leagueData.currentWeek} Matchups`} 
+          <DashboardCard
+            title={`Week ${leagueData.currentWeek} Matchups`}
             description="Current matchups in your league"
             className="mb-6"
           >
-            <MatchupsList 
+            <MatchupsList
               matchups={leagueData.matchups[leagueData.currentWeek] || []}
               rosters={leagueData.rosters}
               users={leagueData.users}
@@ -353,17 +340,17 @@ export default function Home() {
         );
       case 'top-scorers':
         return (
-          <DashboardCard 
-            title="Top Performers" 
+          <DashboardCard
+            title="Top Performers"
             description="Weekly and season leaders"
             className="mb-6"
           >
-            <TopScorers 
+            <TopScorers
               matchups={leagueData.matchups}
-              rosters={leagueData.rosters} 
-              users={leagueData.users} 
+              rosters={leagueData.rosters}
+              users={leagueData.users}
               players={leagueData.players}
-              weeklyScores={leagueData.weeklyScores} 
+              weeklyScores={leagueData.weeklyScores}
               currentWeek={leagueData.currentWeek}
             />
           </DashboardCard>
@@ -374,8 +361,8 @@ export default function Home() {
           window.location.hash = 'standings';
         }
         return (
-          <DashboardCard 
-            title="League Standings & Power Rankings" 
+          <DashboardCard
+            title="League Standings & Power Rankings"
             description="View traditional standings or our power rankings formula"
             className="mb-6"
             titleRight={
@@ -384,8 +371,8 @@ export default function Home() {
               </span>
             }
           >
-            <StandingsTable 
-              standings={leagueData.standings} 
+            <StandingsTable
+              standings={leagueData.standings}
               weeklyScores={leagueData.weeklyScores}
               matchups={leagueData.matchups}
               currentWeek={leagueData.currentWeek}
@@ -394,30 +381,32 @@ export default function Home() {
         );
       case 'roster-analysis':
         return (
-          <DashboardCard 
-            title="Roster Analysis" 
+          <DashboardCard
+            title="Roster Analysis"
             description="Analyze roster strengths and weaknesses"
             className="mb-6"
           >
-            <RosterHeatmap 
-              matchups={leagueData.matchups}
-              rosters={leagueData.rosters} 
-              users={leagueData.users} 
-              players={leagueData.players}
-              currentWeek={leagueData.currentWeek}
-            />
+            {renderPlayerData(
+              <RosterHeatmap
+                matchups={leagueData.matchups}
+                rosters={leagueData.rosters}
+                users={leagueData.users}
+                players={leagueData.players}
+                currentWeek={leagueData.currentWeek}
+              />
+            )}
           </DashboardCard>
         );
       case 'draft-board':
         return (
           <div className="mb-6">
-            {leagueData.league && (
-              <DraftBoard 
-                league={leagueData.league}
-                rosters={leagueData.rosters}
-                users={leagueData.users}
-                players={leagueData.players}
-              />
+            {leagueData.league && renderPlayerData(
+                <DraftBoard
+                  league={leagueData.league}
+                  rosters={leagueData.rosters}
+                  users={leagueData.users}
+                  players={leagueData.players}
+                />
             )}
           </div>
         );
@@ -429,20 +418,24 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-dark-900 dark:to-dark-800">
-      <Navigation 
+      <Navigation
         leagueInfo={leagueInfo}
         currentSection={activeSection}
         onSectionChange={setActiveSection}
         onLogout={handleLogout}
       />
-      
+
       <div className="container mx-auto px-4 py-8">
         {/* Login form if no league is loaded */}
         {!leagueData.league && !leagueData.loading && (
           <div className="max-w-lg mx-auto mt-12">
-            <DashboardCard 
-              title="Welcome to Fantasy Dashboard" 
-              description="Connect your Sleeper fantasy football league to get started."
+            <div className="mb-6 text-center">
+              <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Sleeper fantasy football league insights</h1>
+              <p className="mt-3 text-gray-600 dark:text-gray-300">Analyze standings, scoring, rosters, and draft needs for any Sleeper league.</p>
+            </div>
+            <DashboardCard
+              title="Connect a Sleeper league"
+              description="Enter a league ID to load its dashboard."
             >
               <form onSubmit={handleLeagueIdSubmit} className="space-y-6">
                 <div>
@@ -452,6 +445,9 @@ export default function Home() {
                   <div className="mt-1 relative rounded-md shadow-sm">
                     <input
                       type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]+"
+                      maxLength={30}
                       name="leagueId"
                       id="leagueId"
                       value={leagueId}
@@ -484,7 +480,7 @@ export default function Home() {
                   </button>
                 </div>
               </form>
-              
+
               <div className="mt-6 border-t border-gray-200 dark:border-dark-700 pt-4">
                 <h3 className="text-sm font-medium text-gray-900 dark:text-white">Not sure where to find your league ID?</h3>
                 <ol className="mt-2 text-sm text-gray-500 dark:text-gray-400 list-decimal list-inside space-y-1">
@@ -495,28 +491,28 @@ export default function Home() {
                 </ol>
               </div>
             </DashboardCard>
-            
+
             <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
               <p>
-                Fantasy Dashboard provides helpful insights and visualizations for your Sleeper fantasy football league.
+                Your league ID is saved only in this browser. Fantasy Dashboard does not require your Sleeper account credentials.
               </p>
             </div>
           </div>
         )}
-        
+
         {leagueData.loading && (
           <div className="py-12">
             <Loading text="Fetching league data..." />
           </div>
         )}
-        
+
         {leagueData.league && (
           <div className="space-y-8">
             {renderActiveSection()}
           </div>
         )}
       </div>
-      
+
       {/* Footer */}
       <footer className="bg-white dark:bg-dark-800 border-t border-gray-200 dark:border-dark-700 py-6 mt-12">
         <div className="container mx-auto px-4">

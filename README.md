@@ -1,98 +1,42 @@
-# Dynasty Fantasy Football Dashboard
+# Fantasy Dashboard
 
-A comprehensive dashboard for dynasty fantasy football leagues powered by the Sleeper API. This dashboard provides in-depth analytics, visualizations, and insights into your fantasy football league.
+A browser-only dashboard for Sleeper fantasy football leagues. Enter a Sleeper league ID to view standings, matchups, scoring trends, roster analysis, and draft tools.
 
-![Dynasty Fantasy Football Dashboard](public/dashboard-preview.png)
+## How data and privacy work
 
-## Features
+- The dashboard reads league data directly from the public Sleeper API in the visitor's browser.
+- It does not request Sleeper account credentials, proxy league data through a server, or send analytics events.
+- A league ID is saved only in that browser's local storage and can be removed with **Logout**.
+- The full NFL player catalog loads only when a visitor opens Roster Analysis or Draft Board, keeping the initial dashboard responsive.
 
-- **Standings Snapshot**: View current W-L-T records, PCT, PF (points for), PA (points against) with interactive sparklines showing weekly scoring trends
-- **Schedule & Results**: See upcoming matchups for the next weeks and past week's scores with "upset alert" flags
-- **Top Scorers**: Weekly and season-to-date leaderboards with "hot streak" badges for consistent performers
-- **Power Rankings**: Custom algorithm combining record, recent SOS, and margin of victory
-- **Roster Utilization Heatmap**: Visualize how effectively each team uses their roster spots
-- **Draft Board**: Custom draft board with KeepTradeCut rankings integration, watchlist, and team needs analysis
-- **Mobile-Friendly Design**: Full responsive design for all device sizes
+## Local development
 
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18.0.0 or later
-- A Sleeper fantasy football league
-
-### Installation
-
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/your-username/fantasy-dashboard.git
-   cd fantasy-dashboard
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-4. Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-### Using the Dashboard
-
-1. Enter your Sleeper league ID (found in the URL of your Sleeper league page)
-2. The dashboard will fetch all league data and display comprehensive analytics
-3. Navigate between different sections using the navigation bar
-
-## Deployment to GitHub Pages
-
-The dashboard is designed to be easily deployed to GitHub Pages.
-
-### Method 1: Using GitHub Actions (Recommended)
-
-1. Push your changes to the main branch of your GitHub repository
-2. Go to your repository's Settings > Pages
-3. Set the source to "GitHub Actions"
-4. The GitHub Actions workflow will automatically build and deploy your site
-5. Your dashboard will be available at `https://your-username.github.io/fantasy-dashboard/`
-
-### Method 2: Manual Deployment
-
-To manually deploy the application to GitHub Pages:
+Requires Node.js 22 or later.
 
 ```bash
-# Build and deploy
-npm run deploy
+npm ci
+npm run check
+npm run dev
 ```
 
-## Customization
+`npm run check` is the complete local release check: it type-checks and creates the static export. Run it before pushing a deployable change. There are no browser checks or duplicate test suites in deployment.
 
-You can customize various aspects of the dashboard:
+## Deployment
 
-- Update league ID and season in the `.env` file
-- Modify the UI theme in `tailwind.config.js`
-- Add additional data sources in the data fetching workflow
+GitHub Pages serves `https://fantasyfootball.shwrk.com/`.
 
-## Built With
+- `.github/workflows/deploy.yml` builds and deploys only when deployable application files are pushed to `main`.
+- The deployment performs `npm ci`, `npm run build`, and GitHub Pages artifact upload. It does not run browser checks.
+- The old scheduled data workflow has been removed. The site never used its generated data, so removing it avoids recurring Actions minutes and accidental publication of league-specific files.
+- GitHub Pages must use **Settings → Pages → Source: GitHub Actions**. The `CNAME` file keeps the custom domain attached to the Pages deployment.
 
-- [Next.js](https://nextjs.org/) - React framework
-- [TailwindCSS](https://tailwindcss.com/) - Utility-first CSS framework
-- [Chart.js](https://www.chartjs.org/) - Interactive charts and visualizations
-- [Sleeper API](https://docs.sleeper.com/) - Fantasy football data
+## SEO
 
-## Contributing
+The static homepage includes an indexable explanation of the product, a canonical URL, Open Graph and Twitter metadata, `robots.txt`, and a one-page sitemap. League-specific data is loaded only after a visitor enters an ID, so it is not included in the crawlable document.
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## Architecture
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- Sleeper for providing a free and accessible API
-- KeepTradeCut for player rankings data
-- The fantasy football community for inspiration
+- Next.js static export
+- React and Tailwind CSS
+- Chart.js, loaded only with the dashboard visualizations
+- Sleeper API
