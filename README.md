@@ -26,7 +26,7 @@ npm run dev
 GitHub Pages serves `https://fantasyfootball.shwrk.com/`.
 
 - `.github/workflows/deploy.yml` builds and deploys only when deployable application files are pushed to `main`.
-- The deployment performs `npm ci`, `npm run build`, and GitHub Pages artifact upload. It does not run browser checks.
+- The deployment performs `npm ci`, `npm run build`, copies `CNAME` into the Pages artifact, and uploads it. It does not run browser checks.
 - The old scheduled data workflow has been removed. The site never used its generated data, so removing it avoids recurring Actions minutes and accidental publication of league-specific files.
 - GitHub Pages must use **Settings → Pages → Source: GitHub Actions**. The `CNAME` file keeps the custom domain attached to the Pages deployment.
 
